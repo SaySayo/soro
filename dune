@@ -1,0 +1,12 @@
+(subdir
+ static
+ (rule
+ (target main.css)
+ (deps
+  (:config %{workspace_root}/tailwind.config.js)
+  (:input %{workspace_root}/src/css/styles.css)
+  (source_tree %{workspace_root}/src/server))
+ (action
+  (chdir
+   %{workspace_root}
+   (run tailwindcss -m -c %{config} -i %{input} -o %{target})))))
