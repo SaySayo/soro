@@ -132,31 +132,30 @@ let send message =
   |> Lwt_list.iter_p (fun client -> Dream.send client message)
 
 let handle_client client =
-  let client_id = track client in
-  let%lwt () =
-    let history_messages =
-      List.map (fun message -> `Assoc ["message", `String message]) !chat_history
-    in
+let client_id = track client in
+let%lwt () =
+  let history_messages =
+    List.map (fun message -> `Assoc ["message", `String message]) !chat_history
+  in
   let history_message = `List history_messages in
-    Dream.send client (Yojson.Safe.to_string history_message)
-  in
-  let rec loop () =
-    match%lwt Dream.receive client with
-    | Some message ->
-        Dream.log "Server received a message: %s" message;
-        let%lwt () =
-          chat_history := message :: !chat_history;
-          send message
-        in
-        loop ()
-    | None ->
-        forget client_id;
-        Dream.close_websocket client
-  in
-  loop ()
+  Dream.send client (Yojson.Safe.to_string history_message)
+in
+let rec loop () = 
+  match%lwt Dream.receive client with
+  | Some message -> 
+      Dream.log "Server received a message: %s" message;
+      let%lwt () =
+        chat_history := message :: !chat_history;
+        send message
+      in
+      loop ()
+  | None ->
+      forget client_id;
+      Dream.close_websocket client
+in
+loop ()
 
 let () =
-let _ = print_endline (Sys.getcwd ()) in
 Dream.run 
 @@ Dream.logger 
 @@ Dream.router [
