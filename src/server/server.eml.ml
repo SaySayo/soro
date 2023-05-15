@@ -1,5 +1,3 @@
-let chat_history = ref []
-
 let home =
   <html lang="en">
     <head>
@@ -8,7 +6,6 @@ let home =
       <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" />
       <link rel="stylesheet" href="/static/main.css">
-      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/3.0.5/tailwind.min.css" integrity="sha512-T5R5KWWQ5y+L/QzKgLYRwEBYln/D2dbxnmDdZgKfIZGvy/k7NC9qGzjI7y90+YwYJtVfC4jnx4cV2CzsHs20sA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
       <title>Chat App</title>
     </head>
     <body class="bg-gray-100">
@@ -65,14 +62,22 @@ let home =
               chatList.appendChild(li);
         }
 
+        const renderChatHistory = (history) => {
+          chatList.innerHTML = ""; 
+          history.forEach((msg) => {
+            createAndAddChat(msg);
+          });
+        };
+
         let socket = new WebSocket("ws://" + window.location.host + "/websocket");
 
         socket.onmessage = function (event) {
+          console.log(event.data);
           let messages = document.querySelectorAll(".chat-msg");
           let exist = false;
           let receivedData = JSON.parse(event.data);
           messages.forEach((message, i) => {
-            if (message.innerHTML.toLowerCase() === receivedData.message.toLowerCase()) {
+            if (message.textContent.toLowerCase() === receivedData.message.toLowerCase()) {
               message.parentElement.nextElementSibling.classList.add(
                 "fa",
                 "fa-check",
@@ -89,8 +94,34 @@ let home =
 
         socket.onopen = function () {
           socket.send(JSON.stringify({ type: "request_history" }));
+          console.log("WebSocket connection established");
         };
 
+        socket.onmessage = function (event) {
+          let receivedData = JSON.parse(event.data);
+          console.log(receivedData);
+          if (receivedData.type === "chat_history") {
+            renderChatHistory(receivedData.history);
+          } else {
+            let messages = document.querySelectorAll(".chat-msg");
+            let exist = false;
+            messages.forEach((message, i) => {
+              console.log(message.innerHTML, receivedData.message);
+              if (message.innerHTML.toLowerCase() === receivedData.message.toLowerCase()) {
+                message.parentElement.nextElementSibling.classList.add(
+                  "fa",
+                  "fa-check",
+                  "sent"
+                );
+                exist = true;
+              }
+              console.log(message.innerHTML, receivedData.message);
+            });
+            if (exist === false) {
+              createAndAddChat(receivedData);
+            }
+          }
+        };
 
         document.querySelector("form").onsubmit = function (e) {
           e.preventDefault();
@@ -131,6 +162,8 @@ let send message =
   |> List.of_seq
   |> Lwt_list.iter_p (fun client -> Dream.send client message)
 
+let chat_history = ref []
+
 let handle_client client =
 let client_id = track client in
 let%lwt () =
@@ -138,6 +171,8 @@ let%lwt () =
     List.map (fun message -> `Assoc ["message", `String message]) !chat_history
   in
   let history_message = `List history_messages in
+  let () =
+   Dream.log "Sending chat history: %s" (Yojson.Safe.to_string history_message) in
   Dream.send client (Yojson.Safe.to_string history_message)
 in
 let rec loop () = 
