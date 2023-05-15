@@ -1,3 +1,5 @@
+let chat_history = ref []
+
 let home =
   <html lang="en">
     <head>
@@ -10,42 +12,36 @@ let home =
       <title>Chat App</title>
     </head>
     <body class="bg-gray-100">
-      <div class=".container">
-        <header class="py-4">
-          <h1 class="text-2xl font-bold text-center">Welcome To Soro Chat</h1>
-          <p class="text-center">Pick up from where you left off...</p>
-        </header>
-        <main class="max-w-2xl mx-auto my-8">
-          <section class="bg-white rounded-lg shadow-lg">
-            <div class="p-4 border-b border-gray-200">
-              <div class="flex justify-between items-center">
-                <div class="text-lg font-bold text-gray-800">
-                  <span class="mr-2">Username:</span>
-                  <span class="inline-block" id="username-title" contenteditable=true title="Click to edit">Click To Edit</span>
-                </div>
-              </div>
-            </div>
-            <div class="chat-room" id="chatRoom">
-              <ol class="chat-list" id="chatList">
-                <li>
-                  <span>
-                    <span class="chat-sender">Bot: </span>
-                    <span class="chat-msg">Hello there, you are very welcome! </span>
-                  </span>
-                  <i></i>
-                </li>
-              </ol>
-            </div>
-            <div class="chatInput">
-              <form>
-                <input id="chatInput" type="text" placeholder="Type here..." />
-                <button type="submit" class="icons plane" id="chatSubmit">
-                  <i class="fa fa-send"></i>
-                </button>
-              </form>
-            </div>
-          </section>
-        </main>
+      <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold text-center">Welcome to Soro Chat</h1>
+        <p class="text-center mt-2">Pick up from where you left off...</p>
+        <div class="bg-white rounded-lg shadow-lg mt-8">
+          <div class="p-4 border-b border-gray-200 flex justify-center">      
+              <div class="text-lg font-bold text-gray-800">
+                <span class="mr-2">Username:</span>
+                <span class="inline-block" id="username-title" contenteditable="true" title="Click to edit">Click To Edit</span>
+              </div>  
+          </div>
+          <div class="chat-room p-4">
+            <ol class="chat-list space-y-4" id="chatList">
+              <li>
+                <span>
+                  <span class="chat-sender font-bold">Bot:</span>
+                  <span class="chat-msg bg-blue-500 p-2 rounded-lg">Hello there, you are very welcome!</span>
+                </span>
+                <i></i>
+              </li>
+            </ol>
+          </div>
+          <div class="chatInput p-4">
+            <form id="chatForm">
+              <input id="chatInput" type="text" placeholder="Type here..." class="w-1/2 px-4 py-2 rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <button type="submit" class="icons plane">
+                <i class="fa fa-send"></i>
+              </button>
+            </form>
+          </div>
+        </div>
       </div>
       <script>
         let username = document.getElementById("username-title");
@@ -74,18 +70,27 @@ let home =
         socket.onmessage = function (event) {
           let messages = document.querySelectorAll(".chat-msg");
           let exist = false;
-          let recievedData = JSON.parse(event.data);
+          let receivedData = JSON.parse(event.data);
           messages.forEach((message, i) => {
-            if(message.innerHTML.toLowerCase() === recievedData.message.toLowerCase()) {
-              message.parentElement.nextElementSibling.classList.add("fa", "fa-check", "sent");
+            if (message.innerHTML.toLowerCase() === receivedData.message.toLowerCase()) {
+              message.parentElement.nextElementSibling.classList.add(
+                "fa",
+                "fa-check",
+                "sent"
+              );
               exist = true;
-            } 
-          })
+            }
+          });
 
           if (exist === false) {
-            createAndAddChat(recievedData);
+            createAndAddChat(receivedData);
           }
         };
+
+        socket.onopen = function () {
+          socket.send(JSON.stringify({ type: "request_history" }));
+        };
+
 
         document.querySelector("form").onsubmit = function (e) {
           e.preventDefault();
@@ -128,15 +133,27 @@ let send message =
 
 let handle_client client =
   let client_id = track client in
-  let rec loop () = 
+  let%lwt () =
+    let history_messages =
+      List.map (fun message -> `Assoc ["message", `String message]) !chat_history
+    in
+  let history_message = `List history_messages in
+    Dream.send client (Yojson.Safe.to_string history_message)
+  in
+  let rec loop () =
     match%lwt Dream.receive client with
-    | Some message -> 
-        Dream.log "Server recieved a message: %s" (message);
-        let%lwt () = send message 
-        in loop ()
-    | None -> forget client_id;
+    | Some message ->
+        Dream.log "Server received a message: %s" message;
+        let%lwt () =
+          chat_history := message :: !chat_history;
+          send message
+        in
+        loop ()
+    | None ->
+        forget client_id;
         Dream.close_websocket client
-        in loop ()
+  in
+  loop ()
 
 let () =
 let _ = print_endline (Sys.getcwd ()) in

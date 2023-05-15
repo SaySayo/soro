@@ -1,10 +1,12 @@
 (executable
  (public_name soro)
  (name server)
- (libraries soro dream lwt cohttp websocket)
- (preprocess (pps lwt_ppx)))
+ (libraries soro dream lwt cohttp websocket yojson)
+ (preprocess
+  (pps lwt_ppx)))
 
 (rule
  (targets server.ml)
  (deps server.eml.ml)
- (action (run dream_eml %{deps} --workspace %{workspace_root})))
+ (action
+  (run dream_eml %{deps} --workspace %{workspace_root})))
