@@ -3,7 +3,7 @@
  (name server)
  (libraries soro dream lwt cohttp websocket yojson)
  (preprocess
-  (pps lwt_ppx)))
+  (pps lwt_ppx ppx_yojson_conv)))
 
 (rule
  (targets server.ml)

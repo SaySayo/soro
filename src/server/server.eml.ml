@@ -93,7 +93,6 @@ let home =
         };
 
         socket.onopen = function () {
-          socket.send(JSON.stringify({ type: "request_history" }));
           console.log("WebSocket connection established");
         };
 
@@ -146,7 +145,22 @@ let home =
     </body>
   </html>
 
+type chat_entry = {sender : string; message : string} [@@deriving yojson]
+
+type chat_details = chat_entry list [@@deriving yojson]
+
+let load_chat_history () = 
+  match Yojson.Safe.from_file "chat_history.json" with
+  | json -> json |> chat_details_of_yojson
+  | exception Sys_error _ -> []
+  | exception Yojson.Json_error _ -> 
+    Dream.log "chat_history.json file is not valid thus input is being ignored"; 
+    []
+
+let chat_details = ref (load_chat_history ())
+
 let clients : (int, Dream.websocket) Hashtbl.t = Hashtbl.create 7
+
 let track = 
   let last_client_id = ref 0 in
   fun websocket -> 
@@ -162,15 +176,19 @@ let send message =
   |> List.of_seq
   |> Lwt_list.iter_p (fun client -> Dream.send client message)
 
-let chat_history = ref []
+let add_chat_entry entry = 
+  chat_details := entry :: !chat_details;
+  let chat_details_json = !chat_details |> yojson_of_chat_details in
+  Yojson.Safe.to_file "chat_history.json" chat_details_json
 
 let handle_client client =
 let client_id = track client in
 let%lwt () =
-  let history_messages =
-    List.map (fun message -> `Assoc ["message", `String message]) !chat_history
-  in
-  let history_message = `List history_messages in
+let history_message =
+  `Assoc [
+    ("type", `String "chat_history");
+    ("history", !chat_details |> yojson_of_chat_details)
+  ] in
   let () =
    Dream.log "Sending chat history: %s" (Yojson.Safe.to_string history_message) in
   Dream.send client (Yojson.Safe.to_string history_message)
@@ -180,7 +198,8 @@ let rec loop () =
   | Some message -> 
       Dream.log "Server received a message: %s" message;
       let%lwt () =
-        chat_history := message :: !chat_history;
+        let entry = {sender = ""; message = message} in 
+        add_chat_entry entry;
         send message
       in
       loop ()
