@@ -21,13 +21,6 @@ let home =
           </div>
           <div class="chat-room p-4">
             <ol class="chat-list space-y-4" id="chatList">
-              <li>
-                <span>
-                  <span class="chat-sender font-bold">Bot:</span>
-                  <span class="chat-msg bg-blue-500 p-2 rounded-lg">Hello there, you are very welcome!</span>
-                </span>
-                <i></i>
-              </li>
             </ol>
           </div>
           <div class="chatInput p-4">
@@ -63,10 +56,11 @@ let home =
         }
 
         const renderChatHistory = (history) => {
-          chatList.innerHTML = ""; 
+          createAndAddChat({sender: "Bot", message: "You're welcome!"});
           history.forEach((msg) => {
             createAndAddChat(msg);
           });
+          
         };
 
         let socket = new WebSocket("ws://" + window.location.host + "/websocket");
@@ -197,8 +191,13 @@ let rec loop () =
   match%lwt Dream.receive client with
   | Some message -> 
       Dream.log "Server received a message: %s" message;
+      let message_object =
+        message
+        |> Yojson.Safe.from_string
+        |> chat_entry_of_yojson
+      in
       let%lwt () =
-        let entry = {sender = ""; message = message} in 
+        let entry = {sender = message_object.sender; message = message_object.message} in 
         add_chat_entry entry;
         send message
       in
