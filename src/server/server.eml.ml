@@ -44,6 +44,7 @@ let home =
               let chatSender = document.createElement("span");
               let chatMsg = document.createElement("span");
               let chatFeedback = document.createElement("i");
+              
               chatSender.textContent = `${msg.sender}: `;
               chatMsg.textContent = msg.message;
               chatWrapper.appendChild(chatSender);
@@ -139,13 +140,17 @@ let home =
     </body>
   </html>
 
-type chat_entry = {sender : string; message : string} [@@deriving yojson]
+type user_chat_entry = {sender : string; message : string} [@@deriving yojson]
 
-type chat_details = chat_entry list [@@deriving yojson]
+type user_chat_details = user_chat_entry list [@@deriving yojson]
+
+type system_chat_entry = JoinMessage of string | LeaveMessage of string [@@deriving yojson]
+
+type chat_entry = UserMessage of user_chat_entry | SystemMessage of system_chat_entry [@@deriving yojson]
 
 let load_chat_history () = 
   match Yojson.Safe.from_file "chat_history.json" with
-  | json -> json |> chat_details_of_yojson
+  | json -> json |> user_chat_details_of_yojson
   | exception Sys_error _ -> []
   | exception Yojson.Json_error _ -> 
     Dream.log "chat_history.json file is not valid thus input is being ignored"; 
@@ -172,7 +177,7 @@ let send message =
 
 let add_chat_entry entry = 
   chat_details := entry :: !chat_details;
-  let chat_details_json = !chat_details |> yojson_of_chat_details in
+  let chat_details_json = !chat_details |> yojson_of_user_chat_details in
   Yojson.Safe.to_file "chat_history.json" chat_details_json
 
 let handle_client client =
@@ -181,7 +186,7 @@ let%lwt () =
 let history_message =
   `Assoc [
     ("type", `String "chat_history");
-    ("history", !chat_details |> yojson_of_chat_details)
+    ("history", !chat_details |> yojson_of_user_chat_details)
   ] in
   let () =
    Dream.log "Sending chat history: %s" (Yojson.Safe.to_string history_message) in
@@ -194,7 +199,7 @@ let rec loop () =
       let message_object =
         message
         |> Yojson.Safe.from_string
-        |> chat_entry_of_yojson
+        |> user_chat_entry_of_yojson
       in
       let%lwt () =
         let entry = {sender = message_object.sender; message = message_object.message} in 
