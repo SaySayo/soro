@@ -44,7 +44,8 @@ let home =
               let chatSender = document.createElement("span");
               let chatMsg = document.createElement("span");
               let chatFeedback = document.createElement("i");
-              
+
+              if (msg.type === "user") {
               chatSender.textContent = `${msg.sender}: `;
               chatMsg.textContent = msg.message;
               chatWrapper.appendChild(chatSender);
@@ -54,12 +55,23 @@ let home =
               li.appendChild(chatWrapper);
               li.appendChild(chatFeedback);
               chatList.appendChild(li);
+              } else if (msg.type === "system") {
+                chatMsg.textContent = msg.message;
+                chatMsg.classList.add("system-msg");
+                li.appendChild(chatMsg);
+                chatList.appendChild(li);
+              }
         }
 
         const renderChatHistory = (history) => {
-          createAndAddChat({sender: "Bot", message: "You're welcome!"});
+          createAndAddChat({type: "system", message: "You're welcome!"});
           history.forEach((msg) => {
-            createAndAddChat(msg);
+            if(msg.type === "system") {
+              createAndAddChat(msg);
+              } else
+            if(msg.type === "user") {
+              createAndAddChat(msg);
+              }
           });
           
         };
@@ -86,6 +98,12 @@ let home =
             createAndAddChat(receivedData);
           }
         };
+
+        /* socket.onopen = function () {
+          let joinMessage =
+            ["SystemMessage", ["JoinMessage", "message"]];
+          socket.send(JSON.stringify(joinMessage));
+        }; */
 
         socket.onopen = function () {
           console.log("WebSocket connection established");
@@ -125,13 +143,10 @@ let home =
           if (!message)
             return false;
 
-          let msg = {
-            sender: username.textContent,
-            message
-          }
+          let msg = ["UserMessage",{sender : username.innerHTML, message}]
 
           createAndAddChat(msg);
-
+          console.log(msg);
           socket.send(JSON.stringify(msg));
           messageElem.value = "";
           return false;
@@ -176,12 +191,17 @@ let send message =
   |> Lwt_list.iter_p (fun client -> Dream.send client message)
 
 let add_chat_entry entry = 
-  chat_details := entry :: !chat_details;
-  let chat_details_json = !chat_details |> yojson_of_user_chat_details in
-  Yojson.Safe.to_file "chat_history.json" chat_details_json
+  match entry with
+  | UserMessage user_entry -> (chat_details := user_entry :: !chat_details;
+      let chat_details_json = !chat_details |> yojson_of_user_chat_details in
+      Yojson.Safe.to_file "chat_history.json" chat_details_json)
+  | SystemMessage _ -> ()
 
 let handle_client client =
 let client_id = track client in
+let%lwt () = 
+  let join_msg = SystemMessage (JoinMessage "New user joined") in
+  send (Yojson.Safe.to_string (yojson_of_chat_entry join_msg)) in
 let%lwt () =
 let history_message =
   `Assoc [
@@ -199,16 +219,26 @@ let rec loop () =
       let message_object =
         message
         |> Yojson.Safe.from_string
-        |> user_chat_entry_of_yojson
+        |> chat_entry_of_yojson
       in
-      let%lwt () =
-        let entry = {sender = message_object.sender; message = message_object.message} in 
-        add_chat_entry entry;
-        send message
-      in
-      loop ()
+      (match message_object with
+        | UserMessage msg ->
+            let%lwt () =
+              let entry = UserMessage { sender = msg.sender; message = msg.message } in
+              add_chat_entry entry;
+              send message
+            in
+            loop ()
+        | SystemMessage (JoinMessage username) ->
+            let join_message = SystemMessage (JoinMessage username) in
+            let%lwt () = send (Yojson.Safe.to_string (yojson_of_chat_entry join_message)) in
+            loop ()
+        | _ -> loop ()) 
   | None ->
       forget client_id;
+      let%lwt () = 
+      let leave_msg = SystemMessage (LeaveMessage "User left") in
+      send (Yojson.Safe.to_string (yojson_of_chat_entry leave_msg)) in
       Dream.close_websocket client
 in
 loop ()
